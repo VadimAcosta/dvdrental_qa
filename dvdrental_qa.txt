@@ -1,0 +1,267 @@
+--1 - Which DVDRENTAL employee handled the smallest amount of  transactions?
+
+--------- V1 ----- staff_id 2 with 7265
+SELECT r.staff_id, 
+	count(p.payment_id) as num_of_transactions,
+	SUM(p.amount) as total_revenue
+FROM payment as p
+INNER JOIN rental AS r
+on p.rental_id = r.rental_id
+group by r.staff_id
+ORDER BY 2
+LIMIT 2;
+
+---- V2 --- staff_id 1 with 7292
+SELECT staff_id, 
+	COUNT(payment_id) as num_transactions,
+	SUM(amount) as total_revenue
+FROM payment
+GROUP BY staff_id
+ORDER BY num_transactions;
+
+---- another common answer that seems to make sense --- staff_id 2 with 8004 (staff_id 1 with 8040)
+SELECT 
+	s.staff_id,
+	COUNT (r.rental_id) AS transactions
+FROM rental as r
+INNER JOIN staff as s ON s.staff_id=r.staff_id
+GROUP BY s.staff_id
+ORDER BY transactions_handled ASC
+LIMIT 2;
+
+
+
+--2 Which R rated movie has the largest replacement cost?
+---[ RECORD 1 ]--------------
+-- title | Chariots Conspiracy
+-- -[ RECORD 2 ]--------------
+-- title | Cupboard Sinners
+-- -[ RECORD 3 ]--------------
+-- title | Feud Frogmen
+-- -[ RECORD 4 ]--------------
+-- title | Gilmore Boiled
+-- -[ RECORD 5 ]--------------
+-- title | Honey Ties
+-- -[ RECORD 6 ]--------------
+-- title | Jeepers Wedding
+-- -[ RECORD 7 ]--------------
+-- title | Loathing Legally
+-- -[ RECORD 8 ]--------------
+-- title | Quest Mussolini
+-- -[ RECORD 9 ]--------------
+-- title | Salute Apollo
+-- -[ RECORD 10 ]-------------
+-- title | Slacker Liaisons
+
+/* film_id's:
+199
+358
+707
+138
+759
+309
+525
+803
+480
+429 */
+
+------------ V1
+WITH r_rated_movies AS (
+  SELECT *
+  FROM film
+  WHERE film.rating = 'R'
+  )
+SELECT title, replacement_cost
+FROM r_rated_movies
+WHERE replacement_cost = (
+  SELECT MAX(replacement_cost)
+  FROM r_rated_movies
+  )
+;
+
+---- V2
+SELECT film_id, title, replacement_cost 
+FROM film
+WHERE replacement_cost = (
+	SELECT MAX(replacement_cost)
+	FROM film
+	WHERE rating = 'R') AND
+	rating = 'R';
+
+
+
+--3 Get the customer ID’s of ALL customers who have spent more money than the average of all customers in the database
+--count of 285 customer ID's
+
+----------- V1!
+WITH total_payments AS (
+  SELECT p.customer_id, SUM(p.amount) as total_customer_payment
+  FROM payment as p
+  GROUP BY p.customer_id
+  ORDER BY 2 DESC
+  )
+SELECT *
+FROM total_payments
+WHERE total_customer_payment >
+  (SELECT AVG(total_customer_payment) from total_payments)
+;
+
+--- V2
+WITH total_spending AS (
+SELECT customer_id, SUM(amount) as total
+FROM payment
+GROUP BY customer_id)
+SELECT COUNT(*) 
+FROM total_spending
+WHERE total > (
+	SELECT AVG(total)
+	FROM total_spending)
+
+
+
+--4 Return the customer IDs of customers who have spent less than $100 with the staff member who has an ID of 1.
+--- count of 591 customer ID's
+
+----------- V1
+WITH payment_for_staff_id_1 AS (
+  SELECT
+    p.payment_id AS payment_id,
+    p.customer_id AS customer_id,
+    p.amount AS amount
+  FROM payment AS p
+  WHERE p.staff_id = 1
+)
+SELECT
+  c.customer_id AS customer_id,
+  SUM(payment_for_staff_id_1.amount)
+FROM
+  customer AS c
+INNER JOIN
+  payment_for_staff_id_1
+ON
+  c.customer_id = payment_for_staff_id_1.customer_id
+GROUP BY
+  c.customer_id
+HAVING
+  SUM(payment_for_staff_id_1.amount) < 100
+ORDER BY
+  SUM(payment_for_staff_id_1.amount) DESC;
+  
+---- V2
+WITH customers1 AS (
+SELECT customer_id, SUM(amount) AS total
+FROM payment
+WHERE staff_id = 1
+GROUP BY customer_id
+)
+SELECT *
+FROM customers1
+WHERE total < 100;
+  
+  
+
+--5  Which store has made the most money from renting family-friendly films, (ie ratings of G, PG, or PG-13)?
+
+------- V1 -- staff_id 2 with $18,465.58
+SELECT r.staff_id, sum(p.amount) as amt
+FROM payment as p
+INNER JOIN rental AS r
+ON p.rental_id = r.rental_id
+INNER JOIN inventory as i
+ON i.inventory_id = r.inventory_id
+INNER JOIN film as f
+on f.film_id = i.film_id
+WHERE f.rating in ('G', 'PG', 'PG-13')
+GROUP BY r.staff_id
+ORDER BY sum(p.amount) DESC
+LIMIT 2; 
+
+--------------- V2 -- store id 1 | $18,452.69 // store 2 18151.40
+SELECT i.store_id, SUM(p.amount)
+FROM film as f
+	INNER JOIN inventory as i USING(film_id)
+	INNER JOIN rental as r USING(inventory_id)
+	INNER JOIN payment as p USING(rental_id)
+WHERE f.rating IN ('G','PG','PG-13')
+GROUP BY i.store_id; 
+
+
+
+--6 By actor id, which actor id has appeared in the most films?
+----- V1 ----- 107 with 42
+SELECT actor_id, count(*)
+FROM film_actor
+GROUP BY actor_id
+ORDER BY 2 DESC
+LIMIT 10;
+
+
+
+
+--7 What is the total replacement cost for all NC-17 films?
+-- sum | 4228.90
+SELECT SUM(f.replacement_cost)
+FROM film as f
+WHERE f.rating = 'NC-17';
+
+
+
+--8 How many of the films are in Japanese?
+--ZERO
+
+SELECT COUNT(*)
+FROM film AS f
+WHERE f.language_id =
+(SELECT language_id
+  FROM language
+  WHERE language.name LIKE 'J%'
+);
+
+
+
+
+--9 What is the title of the longest documentary?
+--[ RECORD 1 ]---------
+--title | Wife Turn
+--[ RECORD 2 ]---------
+--title | Young Language
+
+WITH documentaries AS (
+  SELECT *
+  FROM film AS f
+  JOIN film_category as fc
+  ON f.film_id = fc.film_id
+  JOIN category as c
+  ON c.category_id = fc.category_id
+  WHERE c.name ILIKE 'doc%'
+)
+SELECT title
+FROM documentaries
+WHERE documentaries.length =
+  (
+  SELECT MAX(documentaries.length)
+  FROM documentaries
+  )
+;
+
+
+
+--10 what is the id of the comedy with the most actors in it?
+---[ RECORD 1 ]----+----
+--film_id          | 188
+--Number of Actors | 13
+
+SELECT f.film_id, count(fa.actor_id) AS "Number of Actors"
+FROM film AS f
+JOIN film_actor AS fa
+ON f.film_id = fa.film_id
+JOIN film_category as fc
+ON fc.film_id = f.film_id
+WHERE fc.category_id = (
+  SELECT category_id
+  FROM category
+  WHERE category.name iLIKE 'COMEDY%'
+  )
+GROUP BY f.film_id
+ORDER BY count(fa.actor_id) DESC
+LIMIT 1;
